@@ -13,149 +13,131 @@ SparkFun_ENS160 myENS;
 int CDS_PIN = A0; // 조도 센서 모듈 연결 핀
 int ensStatus;
 
-// WiFi 정보
-const char* ssid = "your_SSID";
-const char* password = "your_PASSWORD";
+// AP 모드 정보
+const char* ap_ssid = "SmartFarm_AP2";  // AP 모드 SSID
+const char* ap_password = "123456789";  // AP 모드 비밀번호
 
 // MQTT 브로커 정보
-const char* mqtt_server = "weki.jeuke.com"; // 여기에 주소넣으면 됨
-const int mqtt_port = 1883; // 일반적으로 사용하는 mqtt 프로토콜 기본 포트 번호(TCP/IP를 통해 MQTT 메세지를 송수신 하는데 사용됨)
+const char* mqtt_server = "weki.jeuke.com";
+const int mqtt_port = 1883;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-void setup() {
-  pinMode(CDS_PIN, INPUT);  // 조도 센서를 입력 핀으로 설정
+// UUID 설정
+String uuid = "your_unique_id";  // 실제 UUID로 대체 필요
 
-  Wire.begin();          // I2C 통신 초기화
-  Serial.begin(115200);  // 시리얼 통신 초기화
-
-  dht.begin();           // DHT 센서 초기화
-  delay(1000);           // 센서 초기화 시간 제공 (DHT11은 전력 공급 후 최소 1초 대기 필요)
-
-  if (!myENS.begin()) {  // ENS160 초기화 체크
-    Serial.println("ENS160 initialization failed!");
-    while (1); // 오류 시 멈춤
-  }
-
-  // ENS160 모드 설정
-  if (myENS.setOperatingMode(SFE_ENS160_RESET)) {
-    Serial.println("ENS160 is ready.");
-  }
-
-  delay(100); // 센서 안정화 대기
-  myENS.setOperatingMode(SFE_ENS160_STANDARD);
-
-  // ENS160 상태 플래그 출력
-  ensStatus = myENS.getFlags();
-  Serial.print("Gas Sensor Status Flag: ");
-  Serial.println(ensStatus);
-
-  // WiFi 연결 설정
-  setup_wifi();
-
-  // MQTT 브로커 설정
-  client.setServer(mqtt_server, mqtt_port);
-}
-
-void setup_wifi() {
-  delay(10);
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
+void startAP() {
+    WiFi.softAP(ap_ssid, ap_password);  // AP 모드 시작
+    Serial.println("AP 모드 시작됨");
+    IPAddress IP = WiFi.softAPIP();
+    Serial.print("AP IP 주소: ");
+    Serial.println(IP);
 }
 
 void reconnect() {
-  // MQTT 서버에 연결
-  while (!client.connected()) {
-    Serial.print("Attempting MQTT connection...");
-    // 클라이언트 ID로 ESP8266를 사용
-    String clientId = "ESP8266Client";
-    // 사용자 인증 없이 MQTT 서버에 연결
-    if (client.connect(clientId.c_str())) {
-      Serial.println("connected");
-    } else {
-      Serial.print("failed, rc=");
-      Serial.print(client.state());
-      Serial.println(" try again in 5 seconds");
-      delay(5000);
+    while (!client.connected()) {
+        Serial.print("MQTT 서버에 연결 중...");
+        if (client.connect("ESP8266Client")) {
+            Serial.println("MQTT 서버에 연결됨");
+        } else {
+            Serial.print("MQTT 서버에 연결 실패, rc=");
+            Serial.print(client.state());
+            Serial.println(" 다시 시도 중...");
+            delay(5000);
+        }
     }
-  }
+}
+
+void setup() {
+    Serial.begin(115200);
+    pinMode(CDS_PIN, INPUT);  // 조도 센서 핀을 입력으로 설정
+
+    Wire.begin();          // I2C 통신 초기화
+    dht.begin();           // DHT 센서 초기화
+    delay(1000);           // 센서 초기화 대기
+
+    if (!myENS.begin()) {  // ENS160 초기화 체크
+        Serial.println("ENS160 초기화 실패!");
+        while (true) {
+            delay(1000);  // 1초마다 에러 메시지 출력
+            Serial.println("ENS160 초기화 실패, 재부팅 필요");
+        }
+    }
+
+    myENS.setOperatingMode(SFE_ENS160_STANDARD);  // ENS160 센서 모드 설정
+    ensStatus = myENS.getFlags();
+    Serial.print("가스 센서 상태 플래그: ");
+    Serial.println(ensStatus);
+
+    startAP();  // AP 모드 시작
+
+    client.setServer(mqtt_server, mqtt_port);  // MQTT 서버 설정
 }
 
 void loop() {
-  if (!client.connected()) {
-    reconnect();
-  }
-  client.loop();
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("WiFi 연결 안 됨. AP 모드에서 WiFi 설정 필요.");
+        return;  // WiFi가 연결되지 않은 경우 데이터 수집 및 전송을 하지 않음
+    }
 
-  // 조도 센서의 측정 값 읽기
-  int CDS = analogRead(CDS_PIN);
-  Serial.print("CDS_Sensor: ");
-  Serial.println(CDS);
+    if (!client.connected()) {
+        reconnect();
+    }
+    client.loop();
 
-  // DHT11 센서로부터 습도 및 온도 읽기
-  float h = dht.readHumidity();     // 습도 읽기
-  float t = dht.readTemperature();  // 온도 읽기
+    int CDS = analogRead(CDS_PIN);  // 조도 센서 값 읽기
+    Serial.print("CDS_Sensor: ");
+    Serial.println(CDS);
 
-  // 읽기 오류 확인
-  if (isnan(h) || isnan(t)) { // NaN 반환 여부 확인
-    Serial.println("Failed to read from DHT sensor!");
-  } else {
-    Serial.print("Humidity: ");
-    Serial.print(h);
-    Serial.print("%, ");
-    Serial.print("Temperature: ");
-    Serial.print(t);
-    Serial.println("°C");
+    float h = dht.readHumidity();  // 습도 읽기
+    float t = dht.readTemperature();  // 온도 읽기
 
-    // MQTT 메시지로 전송 (DHT11 데이터)
-    String payload = "Humidity: " + String(h) + " %, Temperature: " + String(t) + " °C";
-    client.publish("home/dht11", payload.c_str());
-  }
+    if (isnan(h) || isnan(t)) {
+        Serial.println("DHT 센서 읽기 실패!");
+    } else {
+        Serial.print("Humidity: ");
+        Serial.print(h);
+        Serial.print("%, Temperature: ");
+        Serial.print(t);
+        Serial.println("°C");
 
-  // ENS160 센서 데이터 상태 확인
-  if (myENS.checkDataStatus()) {
-    int AQI = myENS.getAQI();
-    int TVOC = myENS.getTVOC();
-    int CO2 = myENS.getECO2();
+        String dhtTopic = uuid + "/dht11";
+        String dhtPayload = "Humidity: " + String(h) + " %, Temperature: " + String(t) + " °C";
+        client.publish(dhtTopic.c_str(), dhtPayload.c_str());
+    }
 
-    Serial.print("Air Quality Index (1-5): ");
-    Serial.println(AQI);
+    if (myENS.checkDataStatus()) {  // ENS160 데이터 확인
+        int AQI = myENS.getAQI();
+        int TVOC = myENS.getTVOC();
+        int CO2 = myENS.getECO2();
 
-    Serial.print("Total Volatile Organic Compounds: ");
-    Serial.print(TVOC);
-    Serial.println(" ppb");
+        Serial.print("Air Quality Index (1-5): ");
+        Serial.println(AQI);
+        Serial.print("Total Volatile Organic Compounds: ");
+        Serial.print(TVOC);
+        Serial.println(" ppb");
+        Serial.print("CO2 concentration: ");
+        Serial.print(CO2);
+        Serial.println(" ppm");
 
-    Serial.print("CO2 concentration: ");
-    Serial.print(CO2);
-    Serial.println(" ppm");
+        String ens160Topic = uuid + "/ens160";
+        String ens160Payload = "AQI: " + String(AQI) + ", TVOC: " + String(TVOC) + " ppb, CO2: " + String(CO2) + " ppm";
+        client.publish(ens160Topic.c_str(), ens160Payload.c_str());
+    }
 
-    // MQTT 메시지로 전송 (ENS160 데이터)
-    String ens160Payload = "AQI: " + String(AQI) + ", TVOC: " + String(TVOC) + " ppb, CO2: " + String(CO2) + " ppm";
-    client.publish("home/ens160", ens160Payload.c_str());
-  }
+    String cdsTopic = uuid + "/cds";
+    String cdsPayload = "CDS_Sensor: " + String(CDS);
+    client.publish(cdsTopic.c_str(), cdsPayload.c_str());
 
-  // MQTT 메시지로 조도 센서 값 전송
-  String cdsPayload = "CDS_Sensor: " + String(CDS);
-  client.publish("home/cds", cdsPayload.c_str());
-
-  // 모든 데이터 출력 후 2초 대기
-  delay(2000); // 지금 센서 데이터를 2초마다 전송하도록 설정해놓음. MQTT 트래픽 고려해서 조정 필요할 수도 있음
+    delay(2000);  // 데이터 샘플링 주기 (2초)
 }
 
-// DHT11 데이터는 "home/dht11" 토픽으로 전송
-// ENS160 데이터는 "home/ens160" 토픽으로 전송
-// 조도 센서(CDS) 데이터는 "home/cds" 토픽으로 전송
+
+//토픽 통일
+//토픽:UUID/dht11
+//페이로드: "Humidity: 55.4 %, Temperature: 23.7 °C
+//토픽: UUID/ens160
+//페이로드: "AQI: 2, TVOC: 400 ppb, CO2: 500 ppm"
+//토픽: device1234/cds
+//페이로드: "CDS_Sensor: 1023"
