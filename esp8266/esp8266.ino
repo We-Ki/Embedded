@@ -3,6 +3,7 @@
 #include "SparkFun_ENS160.h"
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
+#include <ESP8266WebServer.h>  // 웹 서버 라이브러리 추가
 
 // 핀 및 센서 타입 정의
 #define DHTPIN D6
@@ -23,6 +24,7 @@ const int mqtt_port = 1883;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
+ESP8266WebServer server(80);  // 웹 서버 객체 생성
 
 // UUID 설정
 String uuid = "your_unique_id";  // 실제 UUID로 대체 필요
@@ -33,6 +35,30 @@ void startAP() {
     IPAddress IP = WiFi.softAPIP();
     Serial.print("AP IP 주소: ");
     Serial.println(IP);
+}
+
+void handleRoot() {
+    String html = "<form action=\"/connect\" method=\"POST\">"
+                  "SSID: <input type=\"text\" name=\"ssid\"><br>"
+                  "Password: <input type=\"text\" name=\"password\"><br>"
+                  "<input type=\"submit\" value=\"Connect\">"
+                  "</form>";
+    server.send(200, "text/html", html);
+}
+
+void handleConnect() {
+    String user_ssid = server.arg("ssid");
+    String user_password = server.arg("password");
+
+    Serial.print("SSID: ");
+    Serial.println(user_ssid);
+    Serial.print("Password: ");
+    Serial.println(user_password);
+
+    // WiFi에 연결 시도
+    WiFi.begin(user_ssid.c_str(), user_password.c_str());
+
+    server.send(200, "text/html", "WiFi에 연결 시도 중...");
 }
 
 void reconnect() {
@@ -72,12 +98,17 @@ void setup() {
 
     startAP();  // AP 모드 시작
 
+    server.on("/", handleRoot);  // 루트 핸들러 설정
+    server.on("/connect", handleConnect);  // 연결 핸들러 설정
+    server.begin();  // 웹 서버 시작
+    Serial.println("웹 서버 시작됨");
+
     client.setServer(mqtt_server, mqtt_port);  // MQTT 서버 설정
 }
 
 void loop() {
     if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("WiFi 연결 안 됨. AP 모드에서 WiFi 설정 필요.");
+        server.handleClient();  // AP 모드 웹 서버 클라이언트 처리
         return;  // WiFi가 연결되지 않은 경우 데이터 수집 및 전송을 하지 않음
     }
 
@@ -133,11 +164,10 @@ void loop() {
     delay(2000);  // 데이터 샘플링 주기 (2초)
 }
 
-
 //토픽 통일
 //토픽:UUID/dht11
 //페이로드: "Humidity: 55.4 %, Temperature: 23.7 °C
 //토픽: UUID/ens160
 //페이로드: "AQI: 2, TVOC: 400 ppb, CO2: 500 ppm"
-//토픽: device1234/cds
+//토픽: UUID/cds
 //페이로드: "CDS_Sensor: 1023"
