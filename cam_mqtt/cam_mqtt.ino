@@ -143,9 +143,21 @@ void captureAndSendImage() {
   Serial.println("Image Data (truncated): \n" + imageData.substring(0, 60));
   String topic = uuid + "/image";
   client.setBufferSize(2048);
-  if (!client.publish(topic.c_str(), imageData.substring(0, 60).c_str()/*imageData.c_str()*/)) {
-    Serial.println("Failed to publish image data");
+  
+  client.beginPublish(topic.c_str(), imageData.length(), true);
+
+  String str = "";
+  for (size_t n=0; n<imageData.length();n=n+2048){
+    if (n+2048<imageData.length()) {
+      str = imageData.substring(n, n+2048);
+      client.write((uint8_t*)str.c_str(), 2048);
+    } else if (imageData.length()%2048>0) {
+      size_t remainder = imageData.length()%2048;
+      str = imageData.substring(n, n+remainder);
+      client.write((uint8_t*)str.c_str(), remainder);
+    }
   }
+  client.endPublish();
   esp_camera_fb_return(fb);
 }
 
