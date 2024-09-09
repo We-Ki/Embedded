@@ -49,6 +49,7 @@ void handleRoot() {
 void handleConnect() {
     String user_ssid = server.arg("ssid");
     String user_password = server.arg("password");
+    uuid = server.arg("uuid");
 
     Serial.print("SSID: ");
     Serial.println(user_ssid);
@@ -133,33 +134,34 @@ void loop() {
         Serial.print(t);
         Serial.println("°C");
 
-        String dhtTopic = uuid + "/dht11";
-        String dhtPayload = "Humidity: " + String(h) + " %, Temperature: " + String(t) + " °C";
-        client.publish(dhtTopic.c_str(), dhtPayload.c_str());
+        // String dhtTopic = uuid + "/dht11";
+        // String dhtPayload = "Humidity: " + String(h) + " %, Temperature: " + String(t) + " °C";
+
+        String humidTopic = uuid + "/humid/air";
+
+        client.publish(humidTopic.c_str(), String(h).c_str());
+
+        String TempTopic = uuid + "/temp";
+
+        client.publish(TempTopic.c_str(), String(t).c_str());
+        
     }
 
     if (myENS.checkDataStatus()) {  // ENS160 데이터 확인
         int AQI = myENS.getAQI();
-        int TVOC = myENS.getTVOC();
-        int CO2 = myENS.getECO2();
+       
 
         Serial.print("Air Quality Index (1-5): ");
         Serial.println(AQI);
-        Serial.print("Total Volatile Organic Compounds: ");
-        Serial.print(TVOC);
-        Serial.println(" ppb");
-        Serial.print("CO2 concentration: ");
-        Serial.print(CO2);
-        Serial.println(" ppm");
 
-        String ens160Topic = uuid + "/ens160";
-        String ens160Payload = "AQI: " + String(AQI) + ", TVOC: " + String(TVOC) + " ppb, CO2: " + String(CO2) + " ppm";
-        client.publish(ens160Topic.c_str(), ens160Payload.c_str());
+        String ens160Topic = uuid + "/airQuality/sensor";
+        // String ens160Payload = "AQI: " + String(AQI) ;
+        client.publish(ens160Topic.c_str(), String(AQI).c_str());
     }
 
-    String cdsTopic = uuid + "/cds";
-    String cdsPayload = "CDS_Sensor: " + String(CDS);
-    client.publish(cdsTopic.c_str(), cdsPayload.c_str());
+    String cdsTopic = uuid + "/light/sensor";
+    // String cdsPayload = "CDS_Sensor: " + String(CDS);
+    client.publish(cdsTopic.c_str(), String(CDS).c_str());
 
     delay(2000);  // 데이터 샘플링 주기 (2초)
 }
@@ -171,3 +173,4 @@ void loop() {
 //페이로드: "AQI: 2, TVOC: 400 ppb, CO2: 500 ppm"
 //토픽: UUID/cds
 //페이로드: "CDS_Sensor: 1023"
+//숫자만 보내는 것으로 수정함(토픽)
