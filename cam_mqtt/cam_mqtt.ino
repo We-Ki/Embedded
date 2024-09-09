@@ -185,5 +185,5 @@ void loop() {
     captureAndSendImage();
   }
   client.loop();
-  delay(5000);
+  delay(40);
 }
