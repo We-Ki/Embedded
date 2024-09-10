@@ -8,6 +8,7 @@
 // 핀 및 센서 타입 정의
 #define DHTPIN D6
 #define DHTTYPE DHT11
+#define LED_PIN D7  // LED 핀 정의 (GPIO 13)
 
 DHT dht(DHTPIN, DHTTYPE);
 SparkFun_ENS160 myENS;
@@ -28,6 +29,9 @@ ESP8266WebServer server(80);  // 웹 서버 객체 생성
 
 // UUID 설정
 String uuid = "your_unique_id";  // 실제 UUID로 대체 필요
+
+// LED 밝기 단계 정의 (1단계: 51, 2단계: 102, ..., 5단계: 255)
+int ledBrightness[5] = {51, 102, 153, 204, 255};
 
 void startAP() {
     WiFi.softAP(ap_ssid, ap_password);  // AP 모드 시작
@@ -76,9 +80,31 @@ void reconnect() {
     }
 }
 
+// LED 밝기 설정 함수 (CDS 값에 따라 5단계로 설정)
+void setLEDBrightness(int CDS) {
+    int brightnessLevel;
+
+    if (CDS <= 204) {
+        brightnessLevel = 1;  // 1단계 (가장 어두움)
+    } else if (CDS <= 409) {
+        brightnessLevel = 2;  // 2단계
+    } else if (CDS <= 614) {
+        brightnessLevel = 3;  // 3단계
+    } else if (CDS <= 819) {
+        brightnessLevel = 4;  // 4단계
+    } else {
+        brightnessLevel = 5;  // 5단계 (가장 밝음)
+    }
+
+    analogWrite(LED_PIN, ledBrightness[brightnessLevel - 1]);  // LED 밝기 설정
+    Serial.print("LED 밝기 단계: ");
+    Serial.println(brightnessLevel);
+}
+
 void setup() {
     Serial.begin(115200);
     pinMode(CDS_PIN, INPUT);  // 조도 센서 핀을 입력으로 설정
+    pinMode(LED_PIN, OUTPUT);  // LED 핀을 출력으로 설정
 
     Wire.begin();          // I2C 통신 초기화
     dht.begin();           // DHT 센서 초기화
@@ -122,6 +148,9 @@ void loop() {
     Serial.print("CDS_Sensor: ");
     Serial.println(CDS);
 
+    // LED 밝기 조절 함수 호출
+    setLEDBrightness(CDS);
+
     float h = dht.readHumidity();  // 습도 읽기
     float t = dht.readTemperature();  // 온도 읽기
 
@@ -134,43 +163,24 @@ void loop() {
         Serial.print(t);
         Serial.println("°C");
 
-        // String dhtTopic = uuid + "/dht11";
-        // String dhtPayload = "Humidity: " + String(h) + " %, Temperature: " + String(t) + " °C";
-
         String humidTopic = uuid + "/humid/air";
-
         client.publish(humidTopic.c_str(), String(h).c_str());
 
-        String TempTopic = uuid + "/temp";
-
-        client.publish(TempTopic.c_str(), String(t).c_str());
-        
+        String tempTopic = uuid + "/temp";
+        client.publish(tempTopic.c_str(), String(t).c_str());
     }
 
     if (myENS.checkDataStatus()) {  // ENS160 데이터 확인
         int AQI = myENS.getAQI();
-       
-
         Serial.print("Air Quality Index (1-5): ");
         Serial.println(AQI);
 
         String ens160Topic = uuid + "/airQuality/sensor";
-        // String ens160Payload = "AQI: " + String(AQI) ;
         client.publish(ens160Topic.c_str(), String(AQI).c_str());
     }
 
     String cdsTopic = uuid + "/light/sensor";
-    // String cdsPayload = "CDS_Sensor: " + String(CDS);
     client.publish(cdsTopic.c_str(), String(CDS).c_str());
 
     delay(2000);  // 데이터 샘플링 주기 (2초)
 }
-
-//토픽 통일
-//토픽:UUID/dht11
-//페이로드: "Humidity: 55.4 %, Temperature: 23.7 °C
-//토픽: UUID/ens160
-//페이로드: "AQI: 2, TVOC: 400 ppb, CO2: 500 ppm"
-//토픽: UUID/cds
-//페이로드: "CDS_Sensor: 1023"
-//숫자만 보내는 것으로 수정함(토픽)
