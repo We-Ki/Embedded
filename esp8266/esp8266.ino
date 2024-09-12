@@ -8,7 +8,7 @@
 // 핀 및 센서 타입 정의
 #define DHTPIN D6
 #define DHTTYPE DHT11
-#define LED_PIN D7  // LED 핀 정의 (GPIO 13)
+// #define LED_PIN D7  // LED 핀 정의 (GPIO 13) // LED 핀 주석처리
 
 DHT dht(DHTPIN, DHTTYPE);
 SparkFun_ENS160 myENS;
@@ -31,7 +31,7 @@ ESP8266WebServer server(80);  // 웹 서버 객체 생성
 String uuid = "your_unique_id";  // 실제 UUID로 대체 필요
 
 // LED 밝기 단계 정의 (1단계: 51, 2단계: 102, ..., 5단계: 255)
-int ledBrightness[5] = {51, 102, 153, 204, 255};
+// int ledBrightness[5] = {51, 102, 153, 204, 255}; // LED 밝기 단계 주석처리
 
 void startAP() {
     WiFi.softAP(ap_ssid, ap_password);  // AP 모드 시작
@@ -43,6 +43,7 @@ void startAP() {
 
 void handleRoot() {
     String html = "<form action=\"/connect\" method=\"POST\">"
+                  "UUID: <input type=\"test\" name=\"uuid\"><br>"
                   "SSID: <input type=\"text\" name=\"ssid\"><br>"
                   "Password: <input type=\"text\" name=\"password\"><br>"
                   "<input type=\"submit\" value=\"Connect\">"
@@ -64,6 +65,8 @@ void handleConnect() {
     WiFi.begin(user_ssid.c_str(), user_password.c_str());
 
     server.send(200, "text/html", "WiFi에 연결 시도 중...");
+
+    client.setServer(mqtt_server, mqtt_port);  // MQTT 서버 설정 // 여기로 옮겼음
 }
 
 void reconnect() {
@@ -81,30 +84,30 @@ void reconnect() {
 }
 
 // LED 밝기 설정 함수 (CDS 값에 따라 5단계로 설정)
-void setLEDBrightness(int CDS) {
-    int brightnessLevel;
+// void setLEDBrightness(int CDS) {
+//     int brightnessLevel;
 
-    if (CDS <= 204) {
-        brightnessLevel = 1;  // 1단계 (가장 어두움)
-    } else if (CDS <= 409) {
-        brightnessLevel = 2;  // 2단계
-    } else if (CDS <= 614) {
-        brightnessLevel = 3;  // 3단계
-    } else if (CDS <= 819) {
-        brightnessLevel = 4;  // 4단계
-    } else {
-        brightnessLevel = 5;  // 5단계 (가장 밝음)
-    }
+//     if (CDS <= 204) {
+//         brightnessLevel = 1;  // 1단계 (가장 어두움)
+//     } else if (CDS <= 409) {
+//         brightnessLevel = 2;  // 2단계
+//     } else if (CDS <= 614) {
+//         brightnessLevel = 3;  // 3단계
+//     } else if (CDS <= 819) {
+//         brightnessLevel = 4;  // 4단계
+//     } else {
+//         brightnessLevel = 5;  // 5단계 (가장 밝음)
+//     }
 
-    analogWrite(LED_PIN, ledBrightness[brightnessLevel - 1]);  // LED 밝기 설정
-    Serial.print("LED 밝기 단계: ");
-    Serial.println(brightnessLevel);
-}
+//     analogWrite(LED_PIN, ledBrightness[brightnessLevel - 1]);  // LED 밝기 설정
+//     Serial.print("LED 밝기 단계: ");
+//     Serial.println(brightnessLevel);
+// }
 
 void setup() {
     Serial.begin(115200);
     pinMode(CDS_PIN, INPUT);  // 조도 센서 핀을 입력으로 설정
-    pinMode(LED_PIN, OUTPUT);  // LED 핀을 출력으로 설정
+    // pinMode(LED_PIN, OUTPUT);  // LED 핀을 출력으로 설정 (주석 처리됨)
 
     Wire.begin();          // I2C 통신 초기화
     dht.begin();           // DHT 센서 초기화
@@ -130,7 +133,6 @@ void setup() {
     server.begin();  // 웹 서버 시작
     Serial.println("웹 서버 시작됨");
 
-    client.setServer(mqtt_server, mqtt_port);  // MQTT 서버 설정
 }
 
 void loop() {
@@ -149,7 +151,7 @@ void loop() {
     Serial.println(CDS);
 
     // LED 밝기 조절 함수 호출
-    setLEDBrightness(CDS);
+    // setLEDBrightness(CDS);  // 잠시 주석 처리
 
     float h = dht.readHumidity();  // 습도 읽기
     float t = dht.readTemperature();  // 온도 읽기
