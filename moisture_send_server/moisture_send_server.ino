@@ -1,8 +1,8 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 
-const char* ssid = "HY-DORM5-561";          // Wi-Fi 이름
-const char* password = "residence561";  // Wi-Fi 비밀번호
+const char* ssid = "HY-DORM5-5F 휴게실";          // Wi-Fi 이름
+const char* password = "residence";  // Wi-Fi 비밀번호
 const char* mqtt_server = "weki.jeuke.com"; // MQTT 서버 주소
 
 WiFiClient espClient;

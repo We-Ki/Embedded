@@ -16,17 +16,17 @@ String ssid = "";
 String password = "";
 
 // 모터 핀 설정
-int Dir1Pin_B = 27;
-int Dir2Pin_B = 26;
-int SpeedPin_B = 25;
+int Dir1Pin_B = 10;
+int Dir2Pin_B = 13;
+int SpeedPin_B = 9;
 
 // 상태 변수
 bool waterPumpActive = false;
-unsigned long timerStart = 0;
+unsigned long pumptimerStart = 0;
 const unsigned long waitTime = 60000;  // 60초
 
 // 기준값
-int soilThreshold = 50;  // 기준값 예시
+int soilThreshold = 150;  // 기준값 예시
 
 void startAP() {
   WiFi.softAP(ap_ssid, ap_password);
@@ -131,8 +131,6 @@ void operatePump() {
   digitalWrite(Dir1Pin_B, LOW);
   digitalWrite(Dir2Pin_B, HIGH);
   analogWrite(SpeedPin_B, 255);  // 워터펌프 동작
-  delay(5000);  // 5초 동안 작동
-  analogWrite(SpeedPin_B, 0);  // 워터펌프 정지
 
   // 워터펌프 동작 상태를 MQTT 서버에 알림
   client.publish((uuid + "/Water").c_str(), "true");
@@ -144,6 +142,15 @@ int readSoilMoisture() {
   Serial.print("Soil Moisture Level: ");
   Serial.println(moistureLevel);
   return moistureLevel;
+}
+
+// 토양 수분 값을 서버로 전송하는 함수
+void sendSoilMoistureToServer(int moistureLevel) {
+  String topic = uuid + "/SoilMoisture";
+  String payload = String(moistureLevel);
+  client.publish(topic.c_str(), payload.c_str());
+  Serial.print("Soil moisture level sent to server: ");
+  Serial.println(payload);
 }
 
 void setup() {
@@ -172,14 +179,20 @@ void loop() {
 
   if (WiFi.status() == WL_CONNECTED && client.connected()) {
     // 토양 수분 센서 값 읽기
-    int soilMoisture = readSoilMoisture();
+    int soilMoisture = readSoilMoisture();  // 센서 값 읽기 및 출력
+
+    // 토양 수분 값을 MQTT 서버로 전송
+    sendSoilMoistureToServer(soilMoisture);
 
     // 토양 수분 값이 기준값 이상이면 워터펌프 동작
     if (soilMoisture >= soilThreshold) {
       operatePump();  // 워터펌프 동작
+      Serial.println("Water pump activated.");  // 워터펌프 동작 상태 출력
+    } else {
+      Serial.println("Water pump not activated.");  // 워터펌프 미작동 상태 출력
     }
   }
 
   client.loop();
-  delay(2000);  // 데이터 샘플링 주기
+  delay(1000);  // 데이터 샘플링 주기
 }
