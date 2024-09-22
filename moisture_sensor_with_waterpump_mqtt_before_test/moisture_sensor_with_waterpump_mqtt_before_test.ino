@@ -26,7 +26,7 @@ unsigned long pumptimerStart = 0;
 const unsigned long waitTime = 60000;  // 60초
 
 // 기준값
-int soilThreshold = 150;  // 기준값 예시
+int soilThreshold = 530;  // 기준값 예시
 
 void startAP() {
   WiFi.softAP(ap_ssid, ap_password);
@@ -133,7 +133,7 @@ void operatePump() {
   analogWrite(SpeedPin_B, 255);  // 워터펌프 동작
 
   // 워터펌프 동작 상태를 MQTT 서버에 알림
-  client.publish((uuid + "/Water").c_str(), "true");
+  client.publish((uuid + "/water").c_str(), "true");
 }
 
 // 토양 수분 센서 값을 읽어오는 함수
@@ -146,7 +146,7 @@ int readSoilMoisture() {
 
 // 토양 수분 값을 서버로 전송하는 함수
 void sendSoilMoistureToServer(int moistureLevel) {
-  String topic = uuid + "/SoilMoisture";
+  String topic = uuid + "/humid/soil";
   String payload = String(moistureLevel);
   client.publish(topic.c_str(), payload.c_str());
   Serial.print("Soil moisture level sent to server: ");
