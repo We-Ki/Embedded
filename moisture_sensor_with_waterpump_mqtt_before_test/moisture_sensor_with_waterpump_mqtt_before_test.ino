@@ -23,10 +23,10 @@ int SpeedPin_B = 9;
 // 상태 변수
 bool waterPumpActive = false;
 unsigned long pumptimerStart = 0;
-const unsigned long waitTime = 60000;  // 60초
+const unsigned long waitTime = 600000;  // 10분?
 
 // 기준값
-int soilThreshold = 530;  // 기준값 예시
+int soilThreshold = 535;  // 기준값 예시
 
 void startAP() {
   WiFi.softAP(ap_ssid, ap_password);
