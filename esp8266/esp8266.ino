@@ -7,17 +7,19 @@
 
 // 핀 및 센서 타입 정의
 #define DHTPIN D6
-#define DHTTYPE DHT11
+#define DHTTYPE DHT22
 #define LED_PIN D7  // LED 핀 정의 (GPIO 13)
 
 DHT dht(DHTPIN, DHTTYPE);
 SparkFun_ENS160 myENS;
 int CDS_PIN = A0; // 조도 센서 모듈 연결 핀
 int ensStatus;
+int ensErrorCount = 0;  // ENS160 오류 발생 횟수
+const int maxEnsErrorCount = 5;  // 최대 허용 오류 횟수
 
 // AP 모드 정보
 const char* ap_ssid = "SmartFarm_AP2";  // AP 모드 SSID
-const char* ap_password = "123456789";  // AP 모드 비밀번호
+const char* ap_password = "12345678";  // AP 모드 비밀번호 동일하게 수정완료
 
 // MQTT 브로커 정보
 const char* mqtt_server = "weki.jeuke.com";
@@ -30,8 +32,9 @@ ESP8266WebServer server(80);  // 웹 서버 객체 생성
 // UUID 설정
 String uuid = "your_unique_id";  // 실제 UUID로 대체 필요
 
-// LED 밝기 단계 정의 (1단계: 51, 2단계: 102, ..., 4단계: 255)
-int ledBrightness[4] = {51, 102, 153, 204};  // 5단계 제거
+// LED 밝기 단계 정의
+int ledBrightness[2] = {102, 204};  // 1단계: 102, 2단계: 204
+int previousBrightnessLevel = -1;  // 이전 밝기 단계 기록 변수
 
 void startAP() {
     WiFi.softAP(ap_ssid, ap_password);  // AP 모드 시작
@@ -83,34 +86,39 @@ void reconnect() {
     }
 }
 
-// LED 밝기 설정 함수 (CDS 값에 따라 4단계로 설정)
+// LED 밝기 설정 함수 (CDS 값에 따라 2단계로 설정)
 void setLEDBrightness(int CDS) {
     int brightnessLevel = 0;  // 초기화
 
-    if (CDS <= 204) {
-        brightnessLevel = 0;  // LED 끔
-    } else if (CDS <= 409) {
-        brightnessLevel = 1;  // 1단계
-    } else if (CDS <= 614) {
-        brightnessLevel = 2;  // 2단계
-    } else if (CDS <= 819) {
-        brightnessLevel = 3;  // 3단계
+    // CDS 값에 따라 LED 밝기 설정
+    if (CDS >= 600) {  // 어두운 상태
+        brightnessLevel = 2;  // 2단계 밝기
+    } else if (CDS >= 400) {  // 약간 어두운 상태
+        brightnessLevel = 1;  // 1단계 밝기
     } else {
-        brightnessLevel = 4;  // 4단계
+        brightnessLevel = 0;  // LED 끔 (매우 밝은 상태)
     }
 
-    if (brightnessLevel > 0) {
-        analogWrite(LED_PIN, ledBrightness[brightnessLevel - 1]);  // LED 밝기 설정
-    } else {
-        analogWrite(LED_PIN, 0);  // LED 끄기
+    // 현재 밝기와 이전 밝기가 다를 때만 변경
+    if (brightnessLevel != previousBrightnessLevel) {
+        if (brightnessLevel == 1) {
+            analogWrite(LED_PIN, ledBrightness[0]);  // 1단계 밝기 설정
+        } else if (brightnessLevel == 2) {
+            analogWrite(LED_PIN, ledBrightness[1]);  // 2단계 밝기 설정
+        } else {
+            analogWrite(LED_PIN, 0);  // LED 끄기
+        }
+
+        Serial.print("LED 밝기 단계: ");
+        Serial.println(brightnessLevel);
+
+        // MQTT로 LED 상태 전송
+        String ledStateTopic = uuid + "/light/state";
+        client.publish(ledStateTopic.c_str(), brightnessLevel > 0 ? "true" : "false");
+
+        // 이전 밝기 단계 업데이트
+        previousBrightnessLevel = brightnessLevel;
     }
-
-    Serial.print("LED 밝기 단계: ");
-    Serial.println(brightnessLevel);
-
-    // LED 상태를 MQTT로 전송
-    String ledStateTopic = uuid + "/light/state";
-    client.publish(ledStateTopic.c_str(), brightnessLevel > 0 ? "true" : "false");
 }
 
 void setup() {
@@ -118,15 +126,12 @@ void setup() {
     pinMode(CDS_PIN, INPUT);  // 조도 센서 핀을 입력으로 설정
     pinMode(LED_PIN, OUTPUT);  // LED 핀을 출력으로 설정
 
-    // 초기 LED 상태 전송
-    String ledStateTopic = uuid + "/light/state";
-    client.publish(ledStateTopic.c_str(), "false");  // LED가 꺼진 상태로 초기화
-
     Wire.begin();          // I2C 통신 초기화
     dht.begin();           // DHT 센서 초기화
     delay(1000);           // 센서 초기화 대기
 
-    if (!myENS.begin()) {  // ENS160 초기화 체크
+    // ENS160 초기화 및 상태 확인
+    if (!myENS.begin()) {
         Serial.println("ENS160 초기화 실패!");
         while (true) {
             delay(1000);  // 1초마다 에러 메시지 출력
@@ -136,8 +141,10 @@ void setup() {
 
     myENS.setOperatingMode(SFE_ENS160_STANDARD);  // ENS160 센서 모드 설정
     ensStatus = myENS.getFlags();
-    Serial.print("가스 센서 상태 플래그: ");
-    Serial.println(ensStatus);
+    if (ensStatus != 0) {  // ENS160 오류 처리
+        Serial.print("ENS160 센서 오류 발생, 플래그 값: ");
+        Serial.println(ensStatus);
+    }
 
     startAP();  // AP 모드 시작
 
@@ -145,6 +152,14 @@ void setup() {
     server.on("/connect", handleConnect);  // 연결 핸들러 설정
     server.begin();  // 웹 서버 시작
     Serial.println("웹 서버 시작됨");
+
+    // MQTT 연결 여부 확인 후 LED 상태 전송
+    if (!client.connected()) {
+        reconnect();
+    }
+
+    String ledStateTopic = uuid + "/light/state";
+    client.publish(ledStateTopic.c_str(), "false");  // LED가 꺼진 상태로 초기화
 }
 
 void loop() {
@@ -169,7 +184,8 @@ void loop() {
     float t = dht.readTemperature();  // 온도 읽기
 
     if (isnan(h) || isnan(t)) {
-        Serial.println("DHT 센서 읽기 실패!");
+        Serial.println("DHT 센서 읽기 실패! 다시 시도합니다.");
+        delay(1000);  // 1초 대기 후 다시 시도
     } else {
         Serial.print("Humidity: ");
         Serial.print(h);
@@ -184,13 +200,31 @@ void loop() {
         client.publish(tempTopic.c_str(), String(t).c_str());
     }
 
-    if (myENS.checkDataStatus()) {  // ENS160 데이터 확인
-        int AQI = myENS.getAQI();
-        Serial.print("Air Quality Index (1-5): ");
-        Serial.println(AQI);
+    // ENS160 센서 오류 처리 및 상태 확인
+    ensStatus = myENS.getFlags();
+    if (ensStatus != 0) {
+        Serial.print("ENS160 센서 오류 발생, 플래그 값: ");
+        Serial.println(ensStatus);
 
-        String ens160Topic = uuid + "/airQuality/sensor";
-        client.publish(ens160Topic.c_str(), String(AQI).c_str());
+        ensErrorCount++;  // 오류 발생 횟수 증가
+
+        // 오류 횟수가 최대치를 넘으면 재부팅
+        if (ensErrorCount >= maxEnsErrorCount) {
+            Serial.println("ENS160 오류 횟수 초과, 시스템 재부팅...");
+            ESP.restart();  // 시스템 재부팅
+        }
+    } else {
+        // 오류가 없으면 오류 카운트 초기화
+        ensErrorCount = 0;
+
+        if (myENS.checkDataStatus()) {  // ENS160 데이터 확인
+            int AQI = myENS.getAQI();
+            Serial.print("Air Quality Index (1-5): ");
+            Serial.println(AQI);
+
+            String ens160Topic = uuid + "/airQuality/sensor";
+            client.publish(ens160Topic.c_str(), String(AQI).c_str());
+        }
     }
 
     String cdsTopic = uuid + "/light/sensor";
