@@ -16,17 +16,24 @@ String ssid = "";
 String password = "";
 
 // 모터 핀 설정
-int Dir1Pin_B = 10;
-int Dir2Pin_B = 13;
-int SpeedPin_B = 9;
+int motorDir1Pin = 10;    //in1
+int motorDir2Pin = 13;    //in2
+int motorENA = 9;         //ena
+
+int fanDir1Pin = 2;       //in3
+int fanDir2Pin = 6;       //in4
+int fanENA = 5;           //enb
 
 // 상태 변수
 bool waterPumpActive = false;
+bool fanActive = false;
 unsigned long pumptimerStart = 0;
-const unsigned long waitTime = 600000;  // 10분?
+//const unsigned long waitTime = 600000;  // 10분
+bool isPumpWating = false;
 
 // 기준값
-int soilThreshold = 535;  // 기준값 예시
+int soilThreshold = 530;  // 기준값 예시
+int airQualityThreshold = 3; // 팬이 동작할 공기질의 기준값
 
 void startAP() {
   WiFi.softAP(ap_ssid, ap_password);
@@ -103,7 +110,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
     message += (char)payload[i];
   }
 
-  String waterTopic = uuid + "/Water";
+  String waterTopic = uuid + "/water";
 
   // UUID/Water 토픽 처리
   if (String(topic) == waterTopic) {
@@ -128,9 +135,9 @@ void reconnect() {
 
 void operatePump() {
   // 워터펌프 동작
-  digitalWrite(Dir1Pin_B, LOW);
-  digitalWrite(Dir2Pin_B, HIGH);
-  analogWrite(SpeedPin_B, 255);  // 워터펌프 동작
+  digitalWrite(motorDir1Pin, LOW);
+  digitalWrite(motorDir2Pin, HIGH);
+  analogWrite(motorENA, 255);  // 워터펌프 동작
 
   // 워터펌프 동작 상태를 MQTT 서버에 알림
   client.publish((uuid + "/water").c_str(), "true");
@@ -156,9 +163,9 @@ void sendSoilMoistureToServer(int moistureLevel) {
 void setup() {
   Serial.begin(115200);
   pinMode(soilSensorPin, INPUT);  // 토양 수분 센서 핀을 입력으로 설정
-  pinMode(Dir1Pin_B, OUTPUT);
-  pinMode(Dir2Pin_B, OUTPUT);
-  pinMode(SpeedPin_B, OUTPUT);
+  pinMode(motorDir1Pin, OUTPUT);
+  pinMode(motorDir2Pin, OUTPUT);
+  pinMode(motorENA, OUTPUT);
 
   startAP();
 

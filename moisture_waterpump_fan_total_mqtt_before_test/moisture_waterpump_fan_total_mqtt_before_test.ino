@@ -16,22 +16,23 @@ String ssid = "";
 String password = "";
 
 // 모터 핀 설정
-int Dir1Pin_B = 10;
-int Dir2Pin_B = 13;
-int SpeedPin_B = 9;
+int motorDir1Pin = 10;    //in1
+int motorDir2Pin = 13;    //in2
+int motorENA = 9;         //ena
 
-// 팬 제어 핀 설정 (예시로 11번 핀 사용)
-int fanPin = 11;
+int fanDir1Pin = 2;       //in3
+int fanDir2Pin = 6;       //in4
+int fanENA = 5;           //enb
 
 // 상태 변수
 bool waterPumpActive = false;
 bool fanActive = false;
 unsigned long pumptimerStart = 0;
-const unsigned long waitTime = 600000;  // 10분?
+const unsigned long waitTime = 600000;  // 10분
+bool isPumpWaiting = false;
 
 // 기준값
-int soilThreshold = 535;  // 기준값 예시
-int airQualityThreshold = 3;  // 팬이 동작할 공기질 기준값
+int soilThreshold = 530;  // 기준값 예시
 
 void startAP() {
   WiFi.softAP(ap_ssid, ap_password);
@@ -70,7 +71,6 @@ void startStation(const char* ssid, const char* password) {
   if (client.connect("ESP32Client")) {
     Serial.println("MQTT connected");
     client.subscribe((uuid + "/Water").c_str());
-    client.subscribe((uuid + "/airquality").c_str());  // airquality 토픽 구독
   } else {
     Serial.println("MQTT connection failed, switching back to AP mode.");
     startAP();
@@ -109,29 +109,16 @@ void callback(char* topic, byte* payload, unsigned int length) {
     message += (char)payload[i];
   }
 
-  String waterTopic = uuid + "/Water";
-  String airQualityTopic = uuid + "/airquality";
+  String waterTopic = uuid + "/water";
 
   // UUID/Water 토픽 처리
   if (String(topic) == waterTopic) {
     if (message == "true") {
       waterPumpActive = true;
+      isPumpWaiting = false;  // 타이머 리셋
+      pumptimerStart = 0;     // 타이머 리셋
     } else if (message == "false") {
       waterPumpActive = false;
-    }
-  }
-
-  // UUID/airquality 토픽 처리 (공기질 데이터)
-  if (String(topic) == airQualityTopic) {
-    int airQualityValue = message.toInt();
-    if (airQualityValue >= airQualityThreshold) {
-      fanActive = true;
-      Serial.println("Fan activated due to air quality.");
-      digitalWrite(fanPin, HIGH);  // 팬 켜기
-    } else {
-      fanActive = false;
-      Serial.println("Fan deactivated.");
-      digitalWrite(fanPin, LOW);  // 팬 끄기
     }
   }
 }
@@ -141,7 +128,6 @@ void reconnect() {
     if (client.connect("ESP32Client")) {
       Serial.println("Reconnected to MQTT server");
       client.subscribe((uuid + "/Water").c_str());
-      client.subscribe((uuid + "/airquality").c_str());  // airquality 토픽 구독
     } else {
       delay(5000);
     }
@@ -150,12 +136,14 @@ void reconnect() {
 
 void operatePump() {
   // 워터펌프 동작
-  digitalWrite(Dir1Pin_B, LOW);
-  digitalWrite(Dir2Pin_B, HIGH);
-  analogWrite(SpeedPin_B, 255);  // 워터펌프 동작
+  digitalWrite(motorDir1Pin, LOW);
+  digitalWrite(motorDir2Pin, HIGH);
+  analogWrite(motorENA, 255);  // 워터펌프 동작
 
   // 워터펌프 동작 상태를 MQTT 서버에 알림
   client.publish((uuid + "/water").c_str(), "true");
+  waterPumpActive = true;
+  Serial.println("Water pump activated.");
 }
 
 // 토양 수분 센서 값을 읽어오는 함수
@@ -178,13 +166,9 @@ void sendSoilMoistureToServer(int moistureLevel) {
 void setup() {
   Serial.begin(115200);
   pinMode(soilSensorPin, INPUT);  // 토양 수분 센서 핀을 입력으로 설정
-  pinMode(Dir1Pin_B, OUTPUT);
-  pinMode(Dir2Pin_B, OUTPUT);
-  pinMode(SpeedPin_B, OUTPUT);
-  
-  // 팬 제어 핀 설정
-  pinMode(fanPin, OUTPUT);
-  digitalWrite(fanPin, LOW);  // 팬 초기 상태는 끔
+  pinMode(motorDir1Pin, OUTPUT);
+  pinMode(motorDir2Pin, OUTPUT);
+  pinMode(motorENA, OUTPUT);
 
   startAP();
 
@@ -210,12 +194,18 @@ void loop() {
     // 토양 수분 값을 MQTT 서버로 전송
     sendSoilMoistureToServer(soilMoisture);
 
-    // 토양 수분 값이 기준값 이상이면 워터펌프 동작
-    if (soilMoisture >= soilThreshold) {
-      operatePump();  // 워터펌프 동작
-      Serial.println("Water pump activated.");  // 워터펌프 동작 상태 출력
-    } else {
-      Serial.println("Water pump not activated.");  // 워터펌프 미작동 상태 출력
+    // 토양 수분 값이 기준값 이상이면 10분 동안 기다리기 시작
+    if (soilMoisture >= soilThreshold && !isPumpWaiting) {
+      isPumpWaiting = true;  // 타이머 시작
+      pumptimerStart = millis();  // 현재 시간 기록
+      Serial.println("Waiting for server to activate the pump...");
+    }
+
+    // 10분 동안 "true" 메시지가 오지 않으면 펌프를 자동으로 동작
+    if (isPumpWaiting && (millis() - pumptimerStart >= waitTime)) {
+      operatePump();
+      isPumpWaiting = false;  // 타이머 초기화
+      pumptimerStart = 0;     // 타이머 초기화
     }
   }
 
