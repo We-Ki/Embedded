@@ -24,7 +24,7 @@
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
-const char* ap_ssid = "SmartFarm_AP";
+const char* ap_ssid = "SmartFarm_AP3";
 const char* ap_password = "12345678";
 const char* mqtt_server = "weki.jeuke.com";
 
