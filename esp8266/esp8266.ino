@@ -184,12 +184,13 @@ void loop() {
     } else {
         Serial.print("Humidity: ");
         Serial.print(h);
+        int inth = h*10;
         Serial.print("%, Temperature: ");
         Serial.print(t);
         Serial.println("°C");
 
         String humidTopic = uuid + "/humid/air";
-        client.publish(humidTopic.c_str(), String(h).c_str());
+        client.publish(humidTopic.c_str(), String(inth).c_str());
 
         String tempTopic = uuid + "/temp";
         client.publish(tempTopic.c_str(), String(t).c_str());
